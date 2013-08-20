@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use utf8;
 
-our $VERSION = "0.02";
+our $VERSION = "0.03";
 
 use Moo;
 use Scalar::Util 'looks_like_number';
@@ -25,6 +25,13 @@ has alphabet => (
 );
 has seps   => ( is => 'rwp', default => sub { [] } );
 has guards => ( is => 'rwp', default => sub { [] } );
+
+sub BUILDARGS {
+    my ( $class, @args ) = @_;
+    unshift @args, 'salt' if @args % 2 == 1;
+
+    return {@args};
+}
 
 sub BUILD {
     my $self = shift;
@@ -51,9 +58,6 @@ sub BUILD {
             my $alphabet = $self->alphabet;
             $alphabet =~ s/$ch/ /g;
             $self->_set_alphabet($alphabet);
-        }
-        else {
-            last;
         }
     }
 
@@ -115,10 +119,9 @@ sub _encode {
                 $lotterySalt .= '-' . ( $num->[$j] + 1 ) * 2;
             }
 
-            # smell
-            my $lottery
-                = $self->_consistentShuffle( $alphabet, $lotterySalt );
-            $res .= $lotteryChar = ( split //, $lottery )[0];
+            my @lottery = split //,
+                $self->_consistentShuffle( $alphabet, $lotterySalt );
+            $res .= $lotteryChar = $lottery[0];
 
             $alphabet =~ s/$lotteryChar//g;
             $alphabet = $lotteryChar . $alphabet;
@@ -252,17 +255,13 @@ sub _consistentShuffle {
 
         push @sort, ( ord || 0 ) for @salt;
 
-        # ugly, must refactor
         for ( my $i = 0; $i != @sort; $i++ ) {
             my $add = 1;
             for ( my $k = $i; $k != @sort + $i - 1; $k++ ) {
                 my $next = ( $k + 1 ) % @sort;
-                if ($add) {
-                    $sort[$i] += $sort[$next] + ( $k * $i );
-                }
-                else {
-                    $sort[$i] -= $sort[$next];
-                }
+                ($add)
+                    ? ( $sort[$i] += $sort[$next] + ( $k * $i ) )
+                    : ( $sort[$i] -= $sort[$next] );
                 $add = !$add;
             }
             $sort[$i] = abs $sort[$i];
@@ -271,9 +270,7 @@ sub _consistentShuffle {
         my $i = 0;
         while (@alphabet) {
             my $pos = $sort[$i];
-            if ( $pos >= @alphabet ) {
-                $pos %= @alphabet;
-            }
+            $pos %= @alphabet if $pos >= @alphabet;
             $res .= $alphabet[$pos];
             splice @alphabet, $pos, 1;
 
@@ -287,7 +284,6 @@ sub _consistentShuffle {
 sub _hash {
     my ( $self, $num, $alphabet ) = @_;
 
-    # we do too much splits, refactor?
     my $hash = '';
     my @alphabet = split //, $alphabet;
 
@@ -326,7 +322,7 @@ Hashids - generate short hashes from numbers
 =head1 SYNOPSIS
 
     use Hashids;
-    my $hashids = Hashids->new(salt => "this is my salt");
+    my $hashids = Hashids->new('this is my salt');
 
     # encrypt a single number
     my $hash = $hashids->encrypt(123);          # 'a79'
@@ -372,6 +368,10 @@ string should be.
 
 =back
 
+You can also construct with just a single argument for the salt:
+
+    my $hashids = Hashids->new('this is my salt');
+
 =item  my $hash = $hashids->encrypt($x, [$y, $z, ...]);
 
 Encrypt a single number (or a list of numbers) into a hash string.
@@ -415,6 +415,11 @@ Zak B. Elep E<lt>zakame@cpan.orgE<gt>
 
 Original Hashids JavaScript library written by L<Ivan
 Akimov|http://twitter.com/ivanakimov>
+
+=head1 THANKS
+
+Props to L<Jofell Gallardo|http://twitter.com/jofell> for pointing this
+excellent project to me in the first place.
 
 =cut
 
