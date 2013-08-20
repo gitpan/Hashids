@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use utf8;
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 use Moo;
 use Scalar::Util 'looks_like_number';
@@ -326,7 +326,7 @@ Hashids - generate short hashes from numbers
 =head1 SYNOPSIS
 
     use Hashids;
-    my $hashids = Hashids->new("this is my salt");
+    my $hashids = Hashids->new(salt => "this is my salt");
 
     # encrypt a single number
     my $hash = $hashids->encrypt(123);          # 'a79'
