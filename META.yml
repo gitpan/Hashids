@@ -1,0 +1,44 @@
+---
+abstract: 'generate short hashes from numbers'
+author:
+  - 'Zak B. Elep <zakame@cpan.org>'
+build_requires:
+  Test::Deep: 0.110
+  Test::Exception: 0.32
+  Test::More: 0.98
+configure_requires:
+  CPAN::Meta: 0
+  CPAN::Meta::Prereqs: 0
+  Module::Build: 0.38
+dynamic_config: 0
+generated_by: 'Minilla/v0.6.2, CPAN::Meta::Converter version 2.132140'
+license: mit
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: Hashids
+no_index:
+  directory:
+    - t
+    - xt
+    - inc
+    - share
+    - eg
+    - examples
+    - author
+provides:
+  Hashids:
+    file: lib/Hashids.pm
+    version: 0.01
+requires:
+  List::MoreUtils: 0.33
+  Moo: 1.003
+  Scalar::Util: 1.31
+  perl: 5.008005
+resources:
+  bugtracker: https://github.com/zakame/hashids.pm/issues
+  homepage: https://github.com/zakame/hashids.pm
+  repository: git://github.com/zakame/hashids.pm.git
+version: 0.01
+x_contributors:
+  - 'Zak B. Elep <zakame@zakame.net>'
