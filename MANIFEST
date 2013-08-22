@@ -8,5 +8,7 @@ lib/Hashids.pm
 minil.toml
 t/00_compile.t
 t/01_hashids.t
+t/02_subclass.t
+t/lib/SubClassTest.pm
 META.yml
 MANIFEST

@@ -4,7 +4,7 @@
       "Zak B. Elep <zakame@cpan.org>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v0.6.2",
+   "generated_by" : "Minilla/v0.6.4",
    "license" : "mit",
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
@@ -48,7 +48,6 @@
       },
       "test" : {
          "requires" : {
-            "Test::Deep" : "0.110",
             "Test::Exception" : "0.32",
             "Test::More" : "0.98"
          }
@@ -57,7 +56,7 @@
    "provides" : {
       "Hashids" : {
          "file" : "lib/Hashids.pm",
-         "version" : "0.03"
+         "version" : "0.04"
       }
    },
    "release_status" : "stable",
@@ -71,7 +70,7 @@
          "web" : "https://github.com/zakame/hashids.pm"
       }
    },
-   "version" : "0.03",
+   "version" : "0.04",
    "x_contributors" : [
       "Zak B. Elep <zakame@zakame.net>"
    ]

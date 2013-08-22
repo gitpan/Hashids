@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use utf8;
 
-our $VERSION = "0.03";
+our $VERSION = "0.04";
 
 use Moo;
 use Scalar::Util 'looks_like_number';
@@ -179,59 +179,57 @@ sub _encode {
 sub _decode {
     my ( $self, $hash ) = @_;
 
+    return unless $hash;
+
     my $res = [];
 
-    if ($hash) {
-        my $orig        = $hash;
-        my $alphabet    = '';
-        my $lotteryChar = '';
+    my $orig        = $hash;
+    my $alphabet    = '';
+    my $lotteryChar = '';
 
-        my $guards = $self->guards;
-        for my $guard (@$guards) {
-            $hash =~ s/$guard/ /g;
-        }
-        my @hashSplit = split / /, $hash;
+    my $guards = $self->guards;
+    for my $guard (@$guards) {
+        $hash =~ s/$guard/ /g;
+    }
+    my @hashSplit = split / /, $hash;
 
-        my $i = 0;
-        if ( @hashSplit == 3 or @hashSplit == 2 ) {
-            $i = 1;
-        }
+    my $i = 0;
+    if ( @hashSplit == 3 or @hashSplit == 2 ) {
+        $i = 1;
+    }
 
-        $hash = $hashSplit[$i];
+    $hash = $hashSplit[$i];
 
-        my $seps = $self->seps;
-        for my $sep (@$seps) {
-            $hash =~ s/$sep/ /g;
-        }
+    my $seps = $self->seps;
+    for my $sep (@$seps) {
+        $hash =~ s/$sep/ /g;
+    }
 
-        my @hash = split / /, $hash;
+    my @hash = split / /, $hash;
 
-        for ( my $i = 0; $i != @hash; $i++ ) {
-            my $subHash = $hash[$i];
-            if ($subHash) {
-                unless ($i) {
-                    $lotteryChar = substr( $hash, 0, 1 );
-                    $subHash = substr( $subHash, 1 );
-                    my $sa = $self->alphabet;
-                    $sa =~ s/$lotteryChar//;
-                    $alphabet = $lotteryChar . $sa;
-                }
-
-                if ( $alphabet and $lotteryChar ) {
-                    $alphabet = $self->_consistentShuffle( $alphabet,
-                        ( ord($lotteryChar) & 12345 ) . $self->salt );
-                    push @$res, $self->_unhash( $subHash, $alphabet );
-
-                }
+    for ( my $i = 0; $i != @hash; $i++ ) {
+        my $subHash = $hash[$i];
+        if ($subHash) {
+            unless ($i) {
+                $lotteryChar = substr( $hash, 0, 1 );
+                $subHash = substr( $subHash, 1 );
+                my $sa = $self->alphabet;
+                $sa =~ s/$lotteryChar//;
+                $alphabet = $lotteryChar . $sa;
             }
-        }
 
-        if ( $self->encrypt(@$res) ne $orig ) {
-            $res = [];
+            if ( $alphabet and $lotteryChar ) {
+                $alphabet = $self->_consistentShuffle( $alphabet,
+                    ( ord($lotteryChar) & 12345 ) . $self->salt );
+                push @$res, $self->_unhash( $subHash, $alphabet );
+            }
         }
     }
 
-    @$res == 1 ? $res->[0] : $res;
+    return unless $self->Hashids::encrypt(@$res) eq $orig;
+
+    return unless defined wantarray;
+    wantarray ? @$res : @$res == 1 ? $res->[0] : $res;
 }
 
 sub _consistentShuffle {
@@ -330,6 +328,9 @@ Hashids - generate short hashes from numbers
 
     # or a list
     $hash = $hashids->encrypt(1, 2, 3);         # 'eGtrS8'
+    my @numbers = $hashids->decrypt('eGtrS8');  # (1, 2, 3)
+
+    # also get results in an arrayref
     my $numbers = $hashids->decrypt('eGtrS8');  # [1, 2, 3]
 
 =head1 DESCRIPTION
@@ -379,8 +380,16 @@ Encrypt a single number (or a list of numbers) into a hash string.
 =item  my $number = $hashids->decrypt($hash);
 
 Decrypt a hash string into its number (or numbers.)  Returns either a
-simple scalar if it is a single number, or an arrayref of numbers if it
-decrypted a set.  Use L<ref> on the result to ensure proper usage.
+simple scalar if it is a single number, an arrayref of numbers if it
+decrypted a set, or C<undef> if given bad input.  Use L<ref> on the
+result to ensure proper usage.
+
+You can also retrieve the result as a proper list by assigning it to an
+array variable, by doing so you will always get a list of one or more
+numbers that are decrypted from the hash, or the empty list if none were
+found:
+
+    my @numbers = $hashids->decrypt($hash);
 
 =back
 
