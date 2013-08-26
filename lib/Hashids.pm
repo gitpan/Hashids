@@ -1,10 +1,8 @@
 package Hashids;
-use 5.008005;
 use strict;
 use warnings;
-use utf8;
 
-our $VERSION = "0.04";
+our $VERSION = "0.05";
 
 use Moo;
 use Scalar::Util 'looks_like_number';
@@ -16,28 +14,37 @@ has minHashLength => (
     isa => sub {
         die "$_[0] is not a number!" unless looks_like_number $_[0];
     },
-    default => sub {0}
+    default => 0
+);
+has alphabet => (
+    is      => 'ro',
+    default => 'xcS4F6h89aUbideAI7tkynuopqrXCgTE5GBKHLMjfRsz'
 );
 
-has alphabet => (
-    is      => 'rwp',
-    default => sub {'xcS4F6h89aUbideAI7tkynuopqrXCgTE5GBKHLMjfRsz'}
-);
-has seps   => ( is => 'rwp', default => sub { [] } );
-has guards => ( is => 'rwp', default => sub { [] } );
+has chars  => ( is => 'rwp', lazy => 1, init_arg => undef );
+has seps   => ( is => 'rwp', lazy => 1, init_arg => undef );
+has guards => ( is => 'rwp', lazy => 1, init_arg => undef );
 
 sub BUILDARGS {
     my ( $class, @args ) = @_;
     unshift @args, 'salt' if @args % 2 == 1;
 
-    return {@args};
+    +{@args};
 }
 
 sub BUILD {
     my $self = shift;
 
-    my @alphabet = split //, $self->alphabet;
+    my $alphabet = $self->alphabet;
+    my @alphabet = split //, $alphabet;
+    my $seps     = [];
+    my $guards   = [];
 
+    my @primes = ( 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43 );
+    my @indices = ( 0, 4, 8, 12 );
+
+    die "@alphabet must not have spaces"
+        if $alphabet =~ /\s/;
     die "@alphabet must contain at least 4 characters"
         unless @alphabet >= 4;
     {
@@ -46,42 +53,22 @@ sub BUILD {
             if scalar grep { $u{$_}++ } @alphabet;
     }
 
-    # probably in _build_seps
-    my @primes = ( 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43 );
     for my $prime (@primes) {
         if ( my $ch = $alphabet[ $prime - 1 ] ) {
-            my $seps = $self->seps;
             push @$seps, $ch;
-            $self->_set_seps($seps);
-
-            # inefficient, I think...
-            my $alphabet = $self->alphabet;
-            $alphabet =~ s/$ch/ /g;
-            $self->_set_alphabet($alphabet);
+            $alphabet =~ s/$ch//g;
         }
     }
-
-    # this too, in _build_guards
-    my @sepIndices = ( 0, 4, 8, 12 );
-    for my $index (@sepIndices) {
-        my $seps = $self->seps;
+    for my $index (@indices) {
         if ( my $sep = $seps->[$index] ) {
-            my $guards = $self->guards;
             push @$guards, $sep;
-            $self->_set_guards($guards);
-
-            # ewww
-            my $s = $self->seps;
-            splice @$s, $index, 1;
-            $self->_set_seps($s);
+            splice @$seps, $index, 1;
         }
     }
 
-    # another inefficiency
-    my $alphabet = $self->alphabet;
-    $alphabet =~ s/\s//g;
-    $self->_set_alphabet(
-        $self->_consistentShuffle( $alphabet, $self->salt ) );
+    $self->_set_guards($guards);
+    $self->_set_seps($seps);
+    $self->_set_chars( $self->_consistentShuffle( $alphabet, $self->salt ) );
 }
 
 sub encrypt {
@@ -100,9 +87,9 @@ sub decrypt {
 }
 
 sub _encode {
-    my ( $self, $num, $alphabet, $salt, $minHashLength ) = @_;
+    my ( $self, $num, $chars, $salt, $minHashLength ) = @_;
 
-    $alphabet      ||= $self->alphabet;
+    $chars         ||= $self->chars;
     $salt          ||= $self->salt;
     $minHashLength ||= $self->minHashLength;
 
@@ -120,16 +107,16 @@ sub _encode {
             }
 
             my @lottery = split //,
-                $self->_consistentShuffle( $alphabet, $lotterySalt );
+                $self->_consistentShuffle( $chars, $lotterySalt );
             $res .= $lotteryChar = $lottery[0];
 
-            $alphabet =~ s/$lotteryChar//g;
-            $alphabet = $lotteryChar . $alphabet;
+            $chars =~ s/$lotteryChar//g;
+            $chars = $lotteryChar . $chars;
         }
 
-        $alphabet = $self->_consistentShuffle( $alphabet,
+        $chars = $self->_consistentShuffle( $chars,
             ( ord($lotteryChar) & 12345 ) . $salt );
-        $res .= $self->_hash( $number, $alphabet );
+        $res .= $self->_hash( $number, $chars );
 
         if ( ( $i + 1 ) < @$num ) {
             my $index = ( $number + $i ) % @seps;
@@ -157,10 +144,10 @@ sub _encode {
     }
 
     while ( length($res) < $minHashLength ) {
-        my @alphabet = split //, $alphabet;
-        my @pad = ( ord( $alphabet[1] ), ord( $alphabet[0] ) );
-        my $padLeft = $self->_encode( \@pad, $alphabet, $salt );
-        my $padRight = $self->_encode( \@pad, $alphabet, join( '', @pad ) );
+        my @chars = split //, $chars;
+        my @pad = ( ord( $chars[1] ), ord( $chars[0] ) );
+        my $padLeft = $self->_encode( \@pad, $chars, $salt );
+        my $padRight = $self->_encode( \@pad, $chars, join( '', @pad ) );
 
         $res = join '', $padLeft, $res, $padRight;
         my $excess = length($res) - $minHashLength;
@@ -169,8 +156,7 @@ sub _encode {
             $res = substr( $res, $excess / 2, $minHashLength );
         }
 
-        $alphabet
-            = $self->_consistentShuffle( $alphabet, join( '', $salt, $res ) );
+        $chars = $self->_consistentShuffle( $chars, join( '', $salt, $res ) );
     }
 
     $res;
@@ -180,55 +166,50 @@ sub _decode {
     my ( $self, $hash ) = @_;
 
     return unless $hash;
+    return unless defined wantarray;
 
     my $res = [];
 
     my $orig        = $hash;
-    my $alphabet    = '';
     my $lotteryChar = '';
+    my $splitIndex  = 0;
 
+    my $chars  = $self->chars;
     my $guards = $self->guards;
+    my $seps   = $self->seps;
+
     for my $guard (@$guards) {
         $hash =~ s/$guard/ /g;
     }
     my @hashSplit = split / /, $hash;
-
-    my $i = 0;
     if ( @hashSplit == 3 or @hashSplit == 2 ) {
-        $i = 1;
+        $splitIndex = 1;
     }
-
-    $hash = $hashSplit[$i];
-
-    my $seps = $self->seps;
+    $hash = $hashSplit[$splitIndex];
     for my $sep (@$seps) {
         $hash =~ s/$sep/ /g;
     }
 
-    my @hash = split / /, $hash;
-
-    for ( my $i = 0; $i != @hash; $i++ ) {
-        my $subHash = $hash[$i];
-        if ($subHash) {
+    my @subHash = split / /, $hash;
+    for ( my $i = 0; $i != @subHash; $i++ ) {
+        if ( my $subHash = $subHash[$i] ) {
             unless ($i) {
                 $lotteryChar = substr( $hash, 0, 1 );
                 $subHash = substr( $subHash, 1 );
-                my $sa = $self->alphabet;
-                $sa =~ s/$lotteryChar//;
-                $alphabet = $lotteryChar . $sa;
+                $chars =~ s/$lotteryChar//;
+                $chars = $lotteryChar . $chars;
             }
 
-            if ( $alphabet and $lotteryChar ) {
-                $alphabet = $self->_consistentShuffle( $alphabet,
+            if ( $chars and $lotteryChar ) {
+                $chars = $self->_consistentShuffle( $chars,
                     ( ord($lotteryChar) & 12345 ) . $self->salt );
-                push @$res, $self->_unhash( $subHash, $alphabet );
+                push @$res, $self->_unhash( $subHash, $chars );
             }
         }
     }
 
     return unless $self->Hashids::encrypt(@$res) eq $orig;
 
-    return unless defined wantarray;
     wantarray ? @$res : @$res == 1 ? $res->[0] : $res;
 }
 

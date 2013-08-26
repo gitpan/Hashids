@@ -28,16 +28,16 @@ no_index:
 provides:
   Hashids:
     file: lib/Hashids.pm
-    version: 0.04
+    version: 0.05
 requires:
   List::MoreUtils: 0.33
-  Moo: 1.003
-  Scalar::Util: 1.31
-  perl: 5.008005
+  Moo: 1.003000
+  Scalar::Util: 1.27
+  perl: 5.008001
 resources:
   bugtracker: https://github.com/zakame/hashids.pm/issues
   homepage: https://github.com/zakame/hashids.pm
   repository: git://github.com/zakame/hashids.pm.git
-version: 0.04
+version: 0.05
 x_contributors:
   - 'Zak B. Elep <zakame@zakame.net>'
