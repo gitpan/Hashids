@@ -28,7 +28,7 @@ no_index:
 provides:
   Hashids:
     file: lib/Hashids.pm
-    version: 0.06
+    version: 0.07
 requires:
   Carp: 1.26
   Moo: 1.003000
@@ -37,6 +37,6 @@ resources:
   bugtracker: https://github.com/zakame/hashids.pm/issues
   homepage: https://github.com/zakame/hashids.pm
   repository: git://github.com/zakame/hashids.pm.git
-version: 0.06
+version: 0.07
 x_contributors:
   - 'Zak B. Elep <zakame@zakame.net>'
