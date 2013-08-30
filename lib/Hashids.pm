@@ -2,17 +2,16 @@ package Hashids;
 use strict;
 use warnings;
 
-our $VERSION = "0.05";
+our $VERSION = "0.06";
 
+use Carp;
 use Moo;
-use Scalar::Util 'looks_like_number';
-use List::MoreUtils 'firstidx';
 
 has salt => ( is => 'ro', default => '' );
 has minHashLength => (
     is  => 'ro',
     isa => sub {
-        die "$_[0] is not a number!" unless looks_like_number $_[0];
+        die "$_[0] is not a number!" unless $_[0] =~ /^\d+$/;
     },
     default => 0
 );
@@ -43,13 +42,13 @@ sub BUILD {
     my @primes = ( 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43 );
     my @indices = ( 0, 4, 8, 12 );
 
-    die "@alphabet must not have spaces"
+    croak "@alphabet must not have spaces"
         if $alphabet =~ /\s/;
-    die "@alphabet must contain at least 4 characters"
+    croak "@alphabet must contain at least 4 characters"
         unless @alphabet >= 4;
     {
         my %u;
-        die "@alphabet must contain unique characters"
+        croak "@alphabet must contain unique characters"
             if scalar grep { $u{$_}++ } @alphabet;
     }
 
@@ -75,7 +74,7 @@ sub encrypt {
     my ( $self, @num ) = @_;
 
     return '' unless @num;
-    map { return '' unless looks_like_number $_ } @num;
+    map { return '' unless /^\d+$/ } @num;
 
     $self->_encode( \@num );
 }
@@ -106,9 +105,9 @@ sub _encode {
                 $lotterySalt .= '-' . ( $num->[$j] + 1 ) * 2;
             }
 
-            my @lottery = split //,
-                $self->_consistentShuffle( $chars, $lotterySalt );
-            $res .= $lotteryChar = $lottery[0];
+            ( $lotteryChar, undef ) = split //,
+                $self->_consistentShuffle( $chars, $lotterySalt ), 2;
+            $res .= $lotteryChar;
 
             $chars =~ s/$lotteryChar//g;
             $chars = $lotteryChar . $chars;
@@ -134,7 +133,7 @@ sub _encode {
         my $guardIndex = $firstIndex % @$guards;
         my $guard      = $guards->[$guardIndex];
 
-        $res = join '', $guard, $res;
+        $res = $guard . $res;
         if ( length($res) < $minHashLength ) {
             $guardIndex = ( $guardIndex + length($res) ) % @$guards;
             $guard      = $guards->[$guardIndex];
@@ -144,19 +143,18 @@ sub _encode {
     }
 
     while ( length($res) < $minHashLength ) {
-        my @chars = split //, $chars;
-        my @pad = ( ord( $chars[1] ), ord( $chars[0] ) );
-        my $padLeft = $self->_encode( \@pad, $chars, $salt );
-        my $padRight = $self->_encode( \@pad, $chars, join( '', @pad ) );
+        my @pad = map ord reverse split // => $chars, 2;
+        my $padLeft  = $self->_encode( \@pad, $chars, $salt );
+        my $padRight = $self->_encode( \@pad, $chars, "@pad" );
 
-        $res = join '', $padLeft, $res, $padRight;
+        $res = $padLeft . $res . $padRight;
         my $excess = length($res) - $minHashLength;
 
         if ( $excess > 0 ) {
             $res = substr( $res, $excess / 2, $minHashLength );
         }
 
-        $chars = $self->_consistentShuffle( $chars, join( '', $salt, $res ) );
+        $chars = $self->_consistentShuffle( $chars, $salt . $res );
     }
 
     $res;
@@ -218,6 +216,8 @@ sub _consistentShuffle {
 
     my $res = '';
 
+    return $res unless $alphabet;
+
     if ( ref $alphabet eq 'ARRAY' ) {
         $alphabet = join '', @$alphabet;
     }
@@ -225,36 +225,33 @@ sub _consistentShuffle {
         $salt = join '', @$salt;
     }
 
-    if ($alphabet) {
-        my @alphabet = split //, $alphabet;
-        my @salt     = split //, $salt;
-        my @sort;
+    my @alphabet = split //, $alphabet;
+    my @salt     = split //, $salt;
+    my @sort;
 
-        push @salt, '' unless @salt;
+    push @salt, '' unless @salt;
+    push @sort, ( ord || 0 ) for @salt;
 
-        push @sort, ( ord || 0 ) for @salt;
-
-        for ( my $i = 0; $i != @sort; $i++ ) {
-            my $add = 1;
-            for ( my $k = $i; $k != @sort + $i - 1; $k++ ) {
-                my $next = ( $k + 1 ) % @sort;
-                ($add)
-                    ? ( $sort[$i] += $sort[$next] + ( $k * $i ) )
-                    : ( $sort[$i] -= $sort[$next] );
-                $add = !$add;
-            }
-            $sort[$i] = abs $sort[$i];
+    for ( my $i = 0; $i != @sort; $i++ ) {
+        my $add = 1;
+        for ( my $j = $i; $j != @sort + $i - 1; $j++ ) {
+            my $next = ( $j + 1 ) % @sort;
+            ($add)
+                ? ( $sort[$i] += $sort[$next] + ( $j * $i ) )
+                : ( $sort[$i] -= $sort[$next] );
+            $add = !$add;
         }
+        $sort[$i] = abs $sort[$i];
+    }
 
-        my $i = 0;
-        while (@alphabet) {
-            my $pos = $sort[$i];
-            $pos %= @alphabet if $pos >= @alphabet;
-            $res .= $alphabet[$pos];
-            splice @alphabet, $pos, 1;
+    my $k = 0;
+    while (@alphabet) {
+        my $pos = $sort[$k];
+        $pos %= @alphabet if $pos >= @alphabet;
+        $res .= $alphabet[$pos];
+        splice @alphabet, $pos, 1;
 
-            $i = ++$i % @sort;
-        }
+        $k = ++$k % @sort;
     }
 
     $res;
@@ -267,8 +264,8 @@ sub _hash {
     my @alphabet = split //, $alphabet;
 
     do {
-        $hash = join '', $alphabet[ $num % @alphabet ], $hash;
-        $num = int( $num / @alphabet );
+        $hash = $alphabet[ $num % @alphabet ] . $hash;
+        $num  = int( $num / @alphabet );
     } while ($num);
 
     $hash;
@@ -282,7 +279,7 @@ sub _unhash {
 
     my @hash = split //, $hash;
     for ( my $i = 0; $i < @hash; $i++ ) {
-        $pos = firstidx { $_ eq $hash[$i] } split //, $alphabet;
+        $pos = index $alphabet, $hash[$i];
         $num += $pos * ( length($alphabet)**( @hash - $i - 1 ) );
     }
 
@@ -323,6 +320,13 @@ validating accounts or making pages private (through abstraction.)
 Instead of showing items as C<1>, C<2>, or C<3>, you could show them as
 C<b9iLXiAa>, C<EATedTBy>, and C<Aaco9cy5>.  Hashes depend on your salt
 value.
+
+This implementation follows the v0.1.4 release of hashids.js.  The
+current version of hashids.js (v0.3.0) uses a new algorithm, so the
+hashes produced by this Perl implementation will probably I<not> decrypt
+correctly on the new JavaScript version.  I will be implementing the new
+algorithm very soon, and maybe probably allow some way to toggle between
+algorithms.
 
 =head1 METHODS
 
@@ -382,22 +386,24 @@ L<Hashids|http://www.hashids.org>
 
 Copyright (C) Zak B. Elep.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 =head1 AUTHOR
 

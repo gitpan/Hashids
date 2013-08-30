@@ -40,9 +40,8 @@
       },
       "runtime" : {
          "requires" : {
-            "List::MoreUtils" : "0.33",
+            "Carp" : "1.26",
             "Moo" : "1.003000",
-            "Scalar::Util" : "1.27",
             "perl" : "5.008001"
          }
       },
@@ -56,7 +55,7 @@
    "provides" : {
       "Hashids" : {
          "file" : "lib/Hashids.pm",
-         "version" : "0.05"
+         "version" : "0.06"
       }
    },
    "release_status" : "stable",
@@ -70,7 +69,7 @@
          "web" : "https://github.com/zakame/hashids.pm"
       }
    },
-   "version" : "0.05",
+   "version" : "0.06",
    "x_contributors" : [
       "Zak B. Elep <zakame@zakame.net>"
    ]
