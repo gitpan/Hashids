@@ -1,8 +1,6 @@
 package Hashids;
-use strict;
-use warnings;
 
-our $VERSION = "0.07";
+our $VERSION = "0.08";
 
 use Carp;
 use Moo;
@@ -11,12 +9,21 @@ has salt => ( is => 'ro', default => '' );
 has minHashLength => (
     is  => 'ro',
     isa => sub {
-        die "$_[0] is not a number!" unless $_[0] =~ /^\d+$/;
+        croak "$_[0] is not a number!" unless $_[0] =~ /^\d+$/;
     },
     default => 0
 );
 has alphabet => (
-    is      => 'ro',
+    is  => 'ro',
+    isa => sub {
+        croak "$_[0] must not have spaces"
+            if $_[0] =~ /\s/;
+        croak "$_[0] must contain at least 4 characters"
+            unless length $_[0] >= 4;
+        my %u;
+        croak "$_[0] must contain unique characters"
+            if grep { $u{$_}++ } split // => $_[0];
+    },
     default => 'xcS4F6h89aUbideAI7tkynuopqrXCgTE5GBKHLMjfRsz'
 );
 
@@ -41,16 +48,6 @@ sub BUILD {
 
     my @primes = ( 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43 );
     my @indices = ( 0, 4, 8, 12 );
-
-    croak "@alphabet must not have spaces"
-        if $alphabet =~ /\s/;
-    croak "@alphabet must contain at least 4 characters"
-        unless @alphabet >= 4;
-    {
-        my %u;
-        croak "@alphabet must contain unique characters"
-            if scalar grep { $u{$_}++ } @alphabet;
-    }
 
     for my $prime (@primes) {
         if ( my $ch = $alphabet[ $prime - 1 ] ) {
@@ -143,7 +140,7 @@ sub _encode {
     }
 
     while ( length($res) < $minHashLength ) {
-        my @pad = map { ord } reverse split // => $chars, 2;
+        my @pad = map {ord} reverse split // => $chars, 2;
         my $padLeft  = $self->_encode( \@pad, $chars, $salt );
         my $padRight = $self->_encode( \@pad, $chars, "@pad" );
 
@@ -418,4 +415,3 @@ Props to L<Jofell Gallardo|http://twitter.com/jofell> for pointing this
 excellent project to me in the first place.
 
 =cut
-
