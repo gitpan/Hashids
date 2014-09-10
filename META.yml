@@ -3,18 +3,16 @@ abstract: 'generate short hashes from numbers'
 author:
   - 'Zak B. Elep <zakame@cpan.org>'
 build_requires:
-  Test::Exception: 0.32
-  Test::More: 0.98
+  Test::Exception: '0.32'
+  Test::More: '0.98'
 configure_requires:
-  CPAN::Meta: 0
-  CPAN::Meta::Prereqs: 0
-  Module::Build: 0.38
+  Module::Build: '0.38'
 dynamic_config: 0
-generated_by: 'Minilla/v0.8.0, CPAN::Meta::Converter version 2.132830'
-license: mit
+generated_by: 'Minilla/v2.1.1, CPAN::Meta::Converter version 2.142060'
+license: unknown
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
+  version: '1.4'
 name: Hashids
 no_index:
   directory:
@@ -29,15 +27,15 @@ no_index:
 provides:
   Hashids:
     file: lib/Hashids.pm
-    version: 0.08
+    version: '1.000000'
 requires:
-  Carp: 1.26
-  Moo: 1.003000
-  perl: 5.008001
+  Carp: '1.26'
+  Moo: '1.003000'
+  perl: '5.008001'
 resources:
   bugtracker: https://github.com/zakame/hashids.pm/issues
   homepage: https://github.com/zakame/hashids.pm
   repository: git://github.com/zakame/hashids.pm.git
-version: 0.08
+version: '1.000000'
 x_contributors:
   - 'Zak B. Elep <zakame@zakame.net>'

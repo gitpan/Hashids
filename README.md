@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/zakame/hashids.pm.png?branch=master)](https://travis-ci.org/zakame/hashids.pm)
+[![Build Status](https://travis-ci.org/zakame/hashids.pm.png?branch=master)](https://travis-ci.org/zakame/hashids.pm) [![Coverage Status](https://coveralls.io/repos/zakame/hashids.pm/badge.png?branch=master)](https://coveralls.io/r/zakame/hashids.pm?branch=master)
 # NAME
 
 Hashids - generate short hashes from numbers
@@ -9,15 +9,15 @@ Hashids - generate short hashes from numbers
     my $hashids = Hashids->new('this is my salt');
 
     # encrypt a single number
-    my $hash = $hashids->encrypt(123);          # 'a79'
-    my $number = $hashids->decrypt('a79');      # 123
+    my $hash = $hashids->encode(123);          # 'YDx'
+    my $number = $hashids->decode('YDx');      # 123
 
     # or a list
-    $hash = $hashids->encrypt(1, 2, 3);         # 'eGtrS8'
-    my @numbers = $hashids->decrypt('eGtrS8');  # (1, 2, 3)
+    $hash = $hashids->encode(1, 2, 3);         # 'eGtrS8'
+    my @numbers = $hashids->decode('laHquq');  # (1, 2, 3)
 
     # also get results in an arrayref
-    my $numbers = $hashids->decrypt('eGtrS8');  # [1, 2, 3]
+    my $numbers = $hashids->decode('laHquq');  # [1, 2, 3]
 
 # DESCRIPTION
 
@@ -29,12 +29,13 @@ Instead of showing items as `1`, `2`, or `3`, you could show them as
 `b9iLXiAa`, `EATedTBy`, and `Aaco9cy5`.  Hashes depend on your salt
 value.
 
-This implementation follows the v0.1.4 release of hashids.js.  The
-current version of hashids.js (v0.3.0) uses a new algorithm, so the
-hashes produced by this Perl implementation will probably _not_ decrypt
-correctly on the new JavaScript version.  I will be implementing the new
-algorithm very soon, and maybe probably allow some way to toggle between
-algorithms.
+**IMPORTANT**: This implementation follows the v1.0.0 API release of
+hashids.js.  An older API of hashids.js (v0.1.4) can be found in Hashids
+version 0.08 and earlier releases; if you have code that depends on this
+API version, please use a tool like [Carton](https://metacpan.org/pod/Carton) to pin your Hashids
+install to the older version.
+
+This implementation is also compatible with the v0.3.x hashids.js API.
 
 # METHODS
 
@@ -49,7 +50,9 @@ algorithms.
     - alphabet => 'abcdefghij'
 
         Alphabet set to use.  This is optional as Hashids comes with a default
-        set suitable for URL shortening.
+        set suitable for URL shortening.  Should you choose to supply a custom
+        alphabet, make sure that it is at least 16 characters long, has no
+        spaces, and only has unique characters.
 
     - minHashLength => 5
 
@@ -60,15 +63,23 @@ algorithms.
 
         my $hashids = Hashids->new('this is my salt');
 
-- my $hash = $hashids->encrypt($x, \[$y, $z, ...\]);
+- my $hash = $hashids->encode($x, \[$y, $z, ...\]);
 
-    Encrypt a single number (or a list of numbers) into a hash string.
+    Encode a single number (or a list of numbers) into a hash
+    string.
 
-- my $number = $hashids->decrypt($hash);
+    `encrypt` is an alias for this method, for compatibility with v0.3.x
+    hashids.js API.
 
-    Decrypt a hash string into its number (or numbers.)  Returns either a
+- my $hash = $hashids->encode\_hex('deadbeef');
+
+    Encode a hex string into a hash string.
+
+- my $number = $hashids->decode($hash);
+
+    Decode a hash string into its number (or numbers.)  Returns either a
     simple scalar if it is a single number, an arrayref of numbers if it
-    decrypted a set, or `undef` if given bad input.  Use [ref](http://search.cpan.org/perldoc?ref) on the
+    decrypted a set, or `undef` if given bad input.  Use [ref](https://metacpan.org/pod/ref) on the
     result to ensure proper usage.
 
     You can also retrieve the result as a proper list by assigning it to an
@@ -76,7 +87,15 @@ algorithms.
     numbers that are decrypted from the hash, or the empty list if none were
     found:
 
-        my @numbers = $hashids->decrypt($hash);
+        my @numbers = $hashids->decode($hash);
+
+    `decrypt` is an alias for this method, for compatibility with v0.3.x
+    hashids.js API.
+
+- my $hex\_string = $hashids->decode\_hex($hash);
+
+    Opposite of [encode\_hex](https://metacpan.org/pod/encode_hex).  Unlike [decode](https://metacpan.org/pod/decode), this will always return a
+    string, including the empty string if the hash is invalid.
 
 # SEE ALSO
 
@@ -109,7 +128,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Zak B. Elep <zakame@cpan.org>
 
-Original Hashids JavaScript library written by [Ivan Akimov](http://twitter.com/ivanakimov)
+Original Hashids JavaScript library written by [Ivan
+Akimov](http://twitter.com/ivanakimov)
 
 # THANKS
 

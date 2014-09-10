@@ -1,9 +1,10 @@
 package Hashids;
 
-our $VERSION = "0.08";
+our $VERSION = "1.000000";
 
 use Carp;
 use Moo;
+use POSIX ();
 
 has salt => ( is => 'ro', default => '' );
 has minHashLength => (
@@ -14,22 +15,29 @@ has minHashLength => (
     default => 0
 );
 has alphabet => (
-    is  => 'ro',
+    is  => 'rwp',
     isa => sub {
         croak "$_[0] must not have spaces"
             if $_[0] =~ /\s/;
-        croak "$_[0] must contain at least 4 characters"
-            unless length $_[0] >= 4;
+        croak "$_[0] must contain at least 16 characters"
+            if length $_[0] < 16;
         my %u;
         croak "$_[0] must contain unique characters"
             if grep { $u{$_}++ } split // => $_[0];
     },
-    default => 'xcS4F6h89aUbideAI7tkynuopqrXCgTE5GBKHLMjfRsz'
+    default => sub { join '' => 'a' .. 'z', 'A' .. 'Z', 1 .. 9, 0 }
 );
 
-has chars  => ( is => 'rwp', lazy => 1, init_arg => undef );
-has seps   => ( is => 'rwp', lazy => 1, init_arg => undef );
-has guards => ( is => 'rwp', lazy => 1, init_arg => undef );
+has chars => ( is => 'rwp', init_arg => undef, default => sub { [] } );
+has seps => (
+    is       => 'rwp',
+    init_arg => undef,
+    default  => sub {
+        my @seps = qw(c f h i s t u);
+        [ @seps, map {uc} @seps ];
+    },
+);
+has guards => ( is => 'rwp', init_arg => undef, default => sub { [] } );
 
 sub BUILDARGS {
     my ( $class, @args ) = @_;
@@ -41,33 +49,46 @@ sub BUILDARGS {
 sub BUILD {
     my $self = shift;
 
-    my $alphabet = $self->alphabet;
-    my @alphabet = split //, $alphabet;
-    my $seps     = [];
-    my $guards   = [];
+    my @alphabet = split // => $self->alphabet;
+    my ( @seps, @guards );
 
-    my @primes = ( 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43 );
-    my @indices = ( 0, 4, 8, 12 );
+    my $sepDiv   = 3.5;
+    my $guardDiv = 12;
 
-    for my $prime (@primes) {
-        if ( my $ch = $alphabet[ $prime - 1 ] ) {
-            push @$seps, $ch;
-            $alphabet =~ s/$ch//g;
-        }
-    }
-    for my $index (@indices) {
-        if ( my $sep = $seps->[$index] ) {
-            push @$guards, $sep;
-            splice @$seps, $index, 1;
-        }
+    # seps should contain only chars present in alphabet;
+    # alphabet should not contain seps
+    for my $sep ( @{ $self->seps } ) {
+        push @seps, $sep if grep {/$sep/} @alphabet;
+        @alphabet = grep { !/$sep/ } @alphabet;
     }
 
-    $self->_set_guards($guards);
-    $self->_set_seps($seps);
-    $self->_set_chars( $self->_consistentShuffle( $alphabet, $self->salt ) );
+    @seps = $self->_consistentShuffle( \@seps, $self->salt );
+
+    if ( !@seps || ( @alphabet / @seps ) > $sepDiv ) {
+        my $sepsLength = POSIX::ceil( @alphabet / $sepDiv );
+        $sepsLength++ if $sepsLength == 1;
+        if ( $sepsLength > @seps ) {
+            push @seps => splice @alphabet, 0, $sepsLength - @seps;
+        }
+        # else {
+        #     splice @seps, 0, $sepsLength;
+        # }
+    }
+
+    @alphabet = $self->_consistentShuffle( \@alphabet, $self->salt );
+    my $guardCount = POSIX::ceil( @alphabet / $guardDiv );
+
+    @guards
+        = @alphabet < 3
+        ? splice @seps, 0, $guardCount
+        : splice @alphabet, 0, $guardCount;
+
+    $self->_set_chars( \@alphabet );
+    $self->_set_seps( \@seps );
+    $self->_set_guards( \@guards );
 }
 
-sub encrypt {
+sub encode {
     my ( $self, @num ) = @_;
 
     return '' unless @num;
@@ -76,85 +97,99 @@ sub encrypt {
     $self->_encode( \@num );
 }
 
-sub decrypt {
+sub decode {
     my ( $self, $hash ) = @_;
     return unless $hash;
     $self->_decode($hash);
 }
 
+sub encode_hex {
+    my ( $self, $str ) = @_;
+
+    return '' unless $str =~ /^[0-9a-fA-F]+$/;
+
+    my @num;
+    push @num, '1' . substr $str, 0, 11, '' while $str;
+
+    no warnings 'portable';
+    @num = map {hex} @num;
+
+    $self->encode(@num);
+}
+
+sub decode_hex {
+    my ( $self, $hash ) = @_;
+
+    my @res = $self->decode($hash);
+
+    @res ? join '' => map { substr sprintf( "%x", $_ ), 1 } @res : '';
+}
+
+sub encrypt {
+    shift->encode(@_);
+}
+
+sub decrypt {
+    shift->decode(shift);
+}
+
 sub _encode {
-    my ( $self, $num, $chars, $salt, $minHashLength ) = @_;
+    my ( $self, $num ) = @_;
 
-    $chars         ||= $self->chars;
-    $salt          ||= $self->salt;
-    $minHashLength ||= $self->minHashLength;
+    my @alphabet = @{ $self->chars };
+    my @res;
 
-    my $res = '';
-    my @seps = split //, $self->_consistentShuffle( $self->seps, $num );
-    my $lotteryChar = '';
+    my $numHashInt;
+    $numHashInt += ( $num->[$_] % ( $_ + 100 ) ) for 0 .. $#$num;
 
-    for ( my $i = 0; $i != @$num; $i++ ) {
-        my $number = $num->[$i];
+    my $lottery = $res[0] = $alphabet[ $numHashInt % @alphabet ];
+    for my $i ( 0 .. $#$num ) {
+        my $n = $num->[$i];
+        my @s = ( $lottery, split( // => $self->salt ), @alphabet )
+            [ 0 .. @alphabet ];
 
-        unless ($i) {
-            my $lotterySalt = join '-', @$num;
-            for ( my $j = 0; $j != @$num; $j++ ) {
-                $lotterySalt .= '-' . ( $num->[$j] + 1 ) * 2;
-            }
+        @alphabet = $self->_consistentShuffle( \@alphabet, \@s );
+        my $last = $self->_hash( $n, \@alphabet );
 
-            ( $lotteryChar, undef ) = split //,
-                $self->_consistentShuffle( $chars, $lotterySalt ), 2;
-            $res .= $lotteryChar;
+        push @res => split // => $last;
 
-            $chars =~ s/$lotteryChar//g;
-            $chars = $lotteryChar . $chars;
-        }
-
-        $chars = $self->_consistentShuffle( $chars,
-            ( ord($lotteryChar) & 12345 ) . $salt );
-        $res .= $self->_hash( $number, $chars );
-
-        if ( ( $i + 1 ) < @$num ) {
-            my $index = ( $number + $i ) % @seps;
-            $res .= $seps[$index];
+        if ( $i + 1 < @$num ) {
+            my $seps = $self->seps;
+            $n %= ( ord($last) + $i );
+            my $sepsIndex = $n % @$seps;
+            push @res, $seps->[$sepsIndex];
         }
     }
 
-    if ( length($res) < $minHashLength ) {
-        my $firstIndex = 0;
-        for ( my $i = 0; $i != @$num; $i++ ) {
-            $firstIndex += ( $i + 1 ) * $num->[$i];
-        }
-
+    if ( @res < $self->minHashLength ) {
         my $guards     = $self->guards;
-        my $guardIndex = $firstIndex % @$guards;
+        my $guardIndex = ( $numHashInt + ord $res[0] ) % @$guards;
         my $guard      = $guards->[$guardIndex];
 
-        $res = $guard . $res;
-        if ( length($res) < $minHashLength ) {
-            $guardIndex = ( $guardIndex + length($res) ) % @$guards;
+        unshift @res, $guard;
+
+        if ( @res < $self->minHashLength ) {
+            $guardIndex = ( $numHashInt + ord $res[2] ) % @$guards;
             $guard      = $guards->[$guardIndex];
 
-            $res .= $guard;
+            push @res, $guard;
         }
     }
 
-    while ( length($res) < $minHashLength ) {
-        my @pad = map {ord} reverse split // => $chars, 2;
-        my $padLeft  = $self->_encode( \@pad, $chars, $salt );
-        my $padRight = $self->_encode( \@pad, $chars, "@pad" );
+    my $halfLength = int @alphabet / 2;
+    while ( @res < $self->minHashLength ) {
+        @alphabet = $self->_consistentShuffle( \@alphabet, \@alphabet );
+        @res = (
+            @alphabet[ $halfLength .. $#alphabet ],
+            @res, @alphabet[ 0 .. $halfLength - 1 ]
+        );
 
-        $res = $padLeft . $res . $padRight;
-        my $excess = length($res) - $minHashLength;
-
-        if ( $excess > 0 ) {
-            $res = substr( $res, $excess / 2, $minHashLength );
+        if ( ( my $excess = @res - $self->minHashLength ) > 0 ) {
+            @res = splice @res, int $excess / 2, $self->minHashLength;
         }
-
-        $chars = $self->_consistentShuffle( $chars, $salt . $res );
     }
 
-    $res;
+    join '' => @res;
 }
 
 sub _decode {
@@ -163,47 +198,31 @@ sub _decode {
     return unless $hash;
     return unless defined wantarray;
 
-    my $res = [];
+    my $res  = [];
+    my $orig = $hash;
 
-    my $orig        = $hash;
-    my $lotteryChar = '';
-    my $splitIndex  = 0;
+    my $guard = join '|', map {quotemeta} @{ $self->guards };
+    my @hash = grep { !/^$/ } split /$guard/ => $hash;
+    my $i = ( @hash == 3 || @hash == 2 ) ? 1 : 0;
 
-    my $chars  = $self->chars;
-    my $guards = $self->guards;
-    my $seps   = $self->seps;
+    $hash = $hash[$i];
+    if ( my $lottery = substr $hash, 0, 1 ) {
+        $hash = substr $hash, 1;
 
-    for my $guard (@$guards) {
-        $hash =~ s/$guard/ /g;
-    }
-    my @hashSplit = split / /, $hash;
-    if ( @hashSplit == 3 or @hashSplit == 2 ) {
-        $splitIndex = 1;
-    }
-    $hash = $hashSplit[$splitIndex];
-    for my $sep (@$seps) {
-        $hash =~ s/$sep/ /g;
-    }
+        my $sep = join '|', @{ $self->seps };
+        @hash = grep { !/^$/ } split /$sep/ => $hash;
 
-    my @subHash = split / /, $hash;
-    for ( my $i = 0; $i != @subHash; $i++ ) {
-        if ( my $subHash = $subHash[$i] ) {
-            unless ($i) {
-                $lotteryChar = substr( $hash, 0, 1 );
-                $subHash = substr( $subHash, 1 );
-                $chars =~ s/$lotteryChar//;
-                $chars = $lotteryChar . $chars;
-            }
+        my @alphabet = @{ $self->chars };
+        for my $part (@hash) {
+            my @s = ( $lottery, split( // => $self->salt ), @alphabet )
+                [ 0 .. @alphabet ];
 
-            if ( $chars and $lotteryChar ) {
-                $chars = $self->_consistentShuffle( $chars,
-                    ( ord($lotteryChar) & 12345 ) . $self->salt );
-                push @$res, $self->_unhash( $subHash, $chars );
-            }
+            @alphabet = $self->_consistentShuffle( \@alphabet, \@s );
+            push @$res => $self->_unhash( $part, \@alphabet );
         }
     }
 
-    return unless $self->Hashids::encrypt(@$res) eq $orig;
+    return unless $self->Hashids::encode(@$res) eq $orig;
 
     wantarray ? @$res : @$res == 1 ? $res->[0] : $res;
 }
@@ -211,54 +230,31 @@ sub _decode {
 sub _consistentShuffle {
     my ( $self, $alphabet, $salt ) = @_;
 
-    my $res = '';
+    return wantarray ? [''] : '' unless $alphabet;
 
-    return $res unless $alphabet;
+    my @alphabet
+        = ref $alphabet eq 'ARRAY' ? @$alphabet : split // => $alphabet;
+    return wantarray ? @alphabet : join '', @alphabet unless $salt;
+    my @salt = ref $salt eq 'ARRAY' ? @$salt : split //, $salt;
 
-    if ( ref $alphabet eq 'ARRAY' ) {
-        $alphabet = join '', @$alphabet;
-    }
-    if ( ref $salt eq 'ARRAY' ) {
-        $salt = join '', @$salt;
-    }
+    my ( $int, $temp, $j );
+    for ( my ( $i, $v, $p ) = ( $#alphabet, 0, 0 ); $i > 0; $i--, $v++ ) {
+        $v %= @salt;
+        $p += $int = ord $salt[$v];
+        $j = ( $int + $v + $p ) % $i;
 
-    my @alphabet = split //, $alphabet;
-    my @salt     = split //, $salt;
-    my @sort;
-
-    push @salt, '' unless @salt;
-    push @sort, ( ord || 0 ) for @salt;
-
-    for ( my $i = 0; $i != @sort; $i++ ) {
-        my $add = 1;
-        for ( my $j = $i; $j != @sort + $i - 1; $j++ ) {
-            my $next = ( $j + 1 ) % @sort;
-            ($add)
-                ? ( $sort[$i] += $sort[$next] + ( $j * $i ) )
-                : ( $sort[$i] -= $sort[$next] );
-            $add = !$add;
-        }
-        $sort[$i] = abs $sort[$i];
+        @alphabet[ $j, $i ] = @alphabet[ $i, $j ];
     }
 
-    my $k = 0;
-    while (@alphabet) {
-        my $pos = $sort[$k];
-        $pos %= @alphabet if $pos >= @alphabet;
-        $res .= $alphabet[$pos];
-        splice @alphabet, $pos, 1;
-
-        $k = ++$k % @sort;
-    }
-
-    $res;
+    wantarray ? @alphabet : join '', @alphabet;
 }
 
 sub _hash {
     my ( $self, $num, $alphabet ) = @_;
 
     my $hash = '';
-    my @alphabet = split //, $alphabet;
+    my @alphabet
+        = ref $alphabet eq 'ARRAY' ? @$alphabet : split // => $alphabet;
 
     do {
         $hash = $alphabet[ $num % @alphabet ] . $hash;
@@ -271,13 +267,15 @@ sub _hash {
 sub _unhash {
     my ( $self, $hash, $alphabet ) = @_;
 
-    my $num = 0;
-    my $pos;
+    my @alphabet
+        = ref $alphabet eq 'ARRAY' ? @$alphabet : split // => $alphabet;
 
-    my @hash = split //, $hash;
-    for ( my $i = 0; $i < @hash; $i++ ) {
-        $pos = index $alphabet, $hash[$i];
-        $num += $pos * ( length($alphabet)**( @hash - $i - 1 ) );
+    my ( $num, $pos );
+    my @hash = split // => $hash;
+    for my $i ( 0 .. $#hash ) {
+        ($pos) = grep { $alphabet[$_] eq $hash[$i] } 0 .. $#alphabet;
+        $pos = defined $pos ? $pos : -1;
+        $num += $pos * ( @alphabet**( @hash - $i - 1 ) );
     }
 
     $num;
@@ -298,15 +296,15 @@ Hashids - generate short hashes from numbers
     my $hashids = Hashids->new('this is my salt');
 
     # encrypt a single number
-    my $hash = $hashids->encrypt(123);          # 'a79'
-    my $number = $hashids->decrypt('a79');      # 123
+    my $hash = $hashids->encode(123);          # 'YDx'
+    my $number = $hashids->decode('YDx');      # 123
 
     # or a list
-    $hash = $hashids->encrypt(1, 2, 3);         # 'eGtrS8'
-    my @numbers = $hashids->decrypt('eGtrS8');  # (1, 2, 3)
+    $hash = $hashids->encode(1, 2, 3);         # 'eGtrS8'
+    my @numbers = $hashids->decode('laHquq');  # (1, 2, 3)
 
     # also get results in an arrayref
-    my $numbers = $hashids->decrypt('eGtrS8');  # [1, 2, 3]
+    my $numbers = $hashids->decode('laHquq');  # [1, 2, 3]
 
 =head1 DESCRIPTION
 
@@ -318,12 +316,13 @@ Instead of showing items as C<1>, C<2>, or C<3>, you could show them as
 C<b9iLXiAa>, C<EATedTBy>, and C<Aaco9cy5>.  Hashes depend on your salt
 value.
 
-This implementation follows the v0.1.4 release of hashids.js.  The
-current version of hashids.js (v0.3.0) uses a new algorithm, so the
-hashes produced by this Perl implementation will probably I<not> decrypt
-correctly on the new JavaScript version.  I will be implementing the new
-algorithm very soon, and maybe probably allow some way to toggle between
-algorithms.
+B<IMPORTANT>: This implementation follows the v1.0.0 API release of
+hashids.js.  An older API of hashids.js (v0.1.4) can be found in Hashids
+version 0.08 and earlier releases; if you have code that depends on this
+API version, please use a tool like L<Carton> to pin your Hashids
+install to the older version.
+
+This implementation is also compatible with the v0.3.x hashids.js API.
 
 =head1 METHODS
 
@@ -342,7 +341,9 @@ Salt string, this should be unique per Hashid object.
 =item  alphabet => 'abcdefghij'
 
 Alphabet set to use.  This is optional as Hashids comes with a default
-set suitable for URL shortening.
+set suitable for URL shortening.  Should you choose to supply a custom
+alphabet, make sure that it is at least 16 characters long, has no
+spaces, and only has unique characters.
 
 =item  minHashLength => 5
 
@@ -355,13 +356,21 @@ You can also construct with just a single argument for the salt:
 
     my $hashids = Hashids->new('this is my salt');
 
-=item  my $hash = $hashids->encrypt($x, [$y, $z, ...]);
+=item  my $hash = $hashids->encode($x, [$y, $z, ...]);
 
-Encrypt a single number (or a list of numbers) into a hash string.
+Encode a single number (or a list of numbers) into a hash
+string.
 
-=item  my $number = $hashids->decrypt($hash);
+C<encrypt> is an alias for this method, for compatibility with v0.3.x
+hashids.js API.
 
-Decrypt a hash string into its number (or numbers.)  Returns either a
+=item my $hash = $hashids->encode_hex('deadbeef');
+
+Encode a hex string into a hash string.
+
+=item  my $number = $hashids->decode($hash);
+
+Decode a hash string into its number (or numbers.)  Returns either a
 simple scalar if it is a single number, an arrayref of numbers if it
 decrypted a set, or C<undef> if given bad input.  Use L<ref> on the
 result to ensure proper usage.
@@ -371,7 +380,15 @@ array variable, by doing so you will always get a list of one or more
 numbers that are decrypted from the hash, or the empty list if none were
 found:
 
-    my @numbers = $hashids->decrypt($hash);
+    my @numbers = $hashids->decode($hash);
+
+C<decrypt> is an alias for this method, for compatibility with v0.3.x
+hashids.js API.
+
+=item my $hex_string = $hashids->decode_hex($hash);
+
+Opposite of L<encode_hex>.  Unlike L<decode>, this will always return a
+string, including the empty string if the hash is invalid.
 
 =back
 

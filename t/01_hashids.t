@@ -6,7 +6,7 @@ use Test::More;
 use Test::Exception;
 use Hashids;
 
-plan tests => 5;
+plan tests => 9;
 
 my $salt = "this is my salt";
 
@@ -45,7 +45,7 @@ subtest 'basics' => sub {
         plan tests => 5;
 
         is( $hashids->alphabet,
-            'xcS4F6h89aUbideAI7tkynuopqrXCgTE5GBKHLMjfRsz',
+            join( '' => ( 'a' .. 'z', 'A' .. 'Z', 1 .. 9, 0 ) ),
             'default alphabet'
         );
 
@@ -57,9 +57,9 @@ subtest 'basics' => sub {
         throws_ok {
             Hashids->new( alphabet => $alphabet );
         }
-        qr/must contain at least 4/, 'at least 4 chars';
+        qr/must contain at least 16/, 'at least 16 chars';
 
-        $alphabet = "abca";
+        $alphabet = "gjklmnopqrvwxyzABDEGJKLMNOPQRVWXYZ1234567890g";
         throws_ok {
             Hashids->new( alphabet => $alphabet );
         }
@@ -83,62 +83,105 @@ subtest 'basics' => sub {
 };
 
 subtest 'internal functions' => sub {
-    plan tests => 4;
+    plan tests => 9;
 
     is( Hashids->_consistentShuffle( '123', 'salt' ), '231', 'shuffle 1' );
     is( Hashids->_consistentShuffle( 'abcdefghij', 'salt' ),
-        'aichgfdebj', 'shuffle 2' );
+        'iajecbhdgf', 'shuffle 2' );
+
+    is( Hashids->_consistentShuffle( [ '1', '2', '3' ], 'salt' ),
+        '231', 'shuffle alphabet list 1' );
+    is( Hashids->_consistentShuffle( [ 'a' .. 'j' ], 'salt' ),
+        'iajecbhdgf', 'shuffle alphabet list 2' );
+
+    my @res = Hashids->_consistentShuffle( '123', 'salt' );
+    is_deeply( \@res, [qw( 2 3 1 )], 'shuffle returns a list' );
+
+    is( Hashids->_consistentShuffle( [ 'a' .. 'j' ], [qw( s a l t )] ),
+        'iajecbhdgf', 'shuffle with salt as list' );
 
     is( Hashids->_hash( 123, 'abcdefghij' ), 'bcd', 'internal hash' );
     is( Hashids->_unhash( 'bcd', 'abcdefghij' ), 123, 'internal unhash' );
-};
 
-subtest 'simple encrypt/decrypt' => sub {
-    plan tests => 6;
-
-    my $hashids = Hashids->new( salt => $salt );
-
-    is( $hashids->encrypt(),               '', 'no encrypt' );
-    is( $hashids->encrypt('up the wazoo'), '', 'bad encrypt' );
-
-    my $plaintext = 123;
-    my $encrypted = 'a79';
-    is( $hashids->encrypt($plaintext), $encrypted, 'encrypt 1' );
-    is( $hashids->decrypt($encrypted), $plaintext, 'decrypt 1' );
-
-    $plaintext = 123456;
-    $encrypted = 'AMyLz';
-    is( $hashids->encrypt($plaintext), $encrypted, 'encrypt 2' );
-    is( $hashids->decrypt($encrypted), $plaintext, 'decrypt 2' );
-};
-
-subtest 'list encrypt/decrypt' => sub {
-    plan tests => 6;
-
-    my $hashids = Hashids->new( salt => $salt );
-
-    can_ok( $hashids, qw/encrypt decrypt/ );
-
-    my @plaintexts = ( 1, 2, 3 );
-    my $encrypted = 'eGtrS8';
-    is( $hashids->encrypt(@plaintexts), $encrypted, 'encrypt list 1' );
-    is_deeply( scalar $hashids->decrypt($encrypted),
-        \@plaintexts, 'decrypt list 1' );
-
-    @plaintexts = ( 123, 456, 789 );
-    $encrypted = 'yn8t46hen';
-    is( $hashids->encrypt(@plaintexts), $encrypted, 'encrypt list 2' );
-    is_deeply( scalar $hashids->decrypt($encrypted),
-        \@plaintexts, 'decrypt list 2' );
-
-    subtest 'decrypted return as list' => sub {
+    subtest '_hash/_unhash with list' => sub {
         plan tests => 2;
 
-        my @single = $hashids->decrypt('a79');
-        is_deeply( \@single, [123], 'decrypted as list (single value)' );
+        my @alphabet = qw(a b c d e f g h i j);
+        is( Hashids->_hash( 123, \@alphabet ), 'bcd', 'internal hash' );
+        is( Hashids->_unhash( 'bcd', \@alphabet ), 123, 'internal unhash' );
+    };
+};
 
-        my @result = $hashids->decrypt($encrypted);
-        is_deeply( \@result, \@plaintexts, 'decrypted as list (multi)' );
+subtest 'simple encode/decode' => sub {
+    plan tests => 6;
+
+    my $hashids = Hashids->new( salt => $salt );
+
+    is( $hashids->encode(),               '', 'no encode' );
+    is( $hashids->encode('up the wazoo'), '', 'bad encode' );
+
+    my $plaintext = 123;
+    my $encoded   = 'YDx';
+    is( $hashids->encode($plaintext), $encoded,   'encode 1' );
+    is( $hashids->decode($encoded),   $plaintext, 'decode 1' );
+
+    $plaintext = 123456;
+    $encoded   = '4DLz6';
+    is( $hashids->encode($plaintext), $encoded,   'encode 2' );
+    is( $hashids->decode($encoded),   $plaintext, 'decode 2' );
+};
+
+subtest 'encode with minHashLength' => sub {
+    plan tests => 2;
+
+    my $hashids = Hashids->new( salt => $salt, minHashLength => 15 );
+
+    my $plaintext = 123;
+    my $encoded   = 'V34xpAYDx0mQNvl';
+    is( $hashids->encode($plaintext), $encoded,   'encode minHashLength' );
+    is( $hashids->decode($encoded),   $plaintext, 'decode minHashLength' );
+};
+
+subtest 'list encode/decode' => sub {
+    plan tests => 7;
+
+    my $hashids = Hashids->new( salt => $salt );
+
+    can_ok( $hashids, qw/encode decode/ );
+
+    my @plaintexts = ( 1, 2, 3 );
+    my $encoded = 'laHquq';
+    is( $hashids->encode(@plaintexts), $encoded, 'encode list 1' );
+    is_deeply( scalar $hashids->decode($encoded),
+        \@plaintexts, 'decode list 1' );
+
+    @plaintexts = ( 123, 456, 789 );
+    $encoded = 'Z8gi1DIx6';
+    is( $hashids->encode(@plaintexts), $encoded, 'encode list 2' );
+    is_deeply( scalar $hashids->decode($encoded),
+        \@plaintexts, 'decode list 2' );
+
+    subtest 'decode return as list' => sub {
+        plan tests => 2;
+
+        my @single = $hashids->decode('YDx');
+        is_deeply( \@single, [123], 'decode as list (single value)' );
+
+        my @result = $hashids->decode($encoded);
+        is_deeply( \@result, \@plaintexts, 'decode as list (multi)' );
+    };
+
+    subtest 'list encode/decode with minHashLength' => sub {
+        plan tests => 2;
+
+        $hashids = Hashids->new( salt => $salt, minHashLength => 16 );
+        $encoded = 'j1DAZ8gi1DIx6Glx';
+
+        is( $hashids->encode(@plaintexts),
+            $encoded, 'encode list with minHashLength' );
+
+        my @result = $hashids->decode($encoded);
+        is_deeply( \@result, \@plaintexts, 'decode as list (minHashLength)' );
     };
 };
 
@@ -147,8 +190,66 @@ subtest 'work with counting numbers only' => sub {
 
     plan tests => 4;
 
-    is( $hashids->encrypt(12.3), '', 'not an integer' );
-    is( $hashids->encrypt(-1),   '', 'not a positive integer' );
-    is( $hashids->encrypt( 123, 45.6 ), '', 'no integer in list' );
-    is( $hashids->encrypt( -1, -2, 3 ), '', 'negative integers in list' );
+    is( $hashids->encode(12.3), '', 'not an integer' );
+    is( $hashids->encode(-1),   '', 'not a positive integer' );
+    is( $hashids->encode( 123, 45.6 ), '', 'no integer in list' );
+    is( $hashids->encode( -1, -2, 3 ), '', 'negative integers in list' );
+};
+
+subtest 'encode hex strings' => sub {
+    plan tests => 4;
+
+    my $hashids = Hashids->new( salt => $salt );
+
+    my $plaintext = 'deadbeef';
+    my $encoded   = 'kRNrpKlJ';
+    is( $hashids->encode_hex($plaintext), $encoded,   'encode hex string' );
+    is( $hashids->decode_hex($encoded),   $plaintext, 'decode hex string' );
+
+    is( $hashids->encode_hex('invalid'), '', 'invalid encode hex string' );
+    is( $hashids->decode_hex('invalid'), '', 'invalid decode hex string' );
+};
+
+subtest 'work with custom alphabets' => sub {
+    plan tests => 4;
+
+    # also tests for regex meta chars and alphabets with mostly seps
+    my $alphabet = 'cfhistuCFHISTU+-*/';
+    my $hashids = Hashids->new( salt => $salt, alphabet => $alphabet );
+
+    my @plaintext = ( 1, 2, 3 );
+    my $encoded = '+-H/u/+';
+    is( $hashids->encode(@plaintext), $encoded, 'encode with mostly seps' );
+
+    my @result = $hashids->decode($encoded);
+    is_deeply( \@result, \@plaintext, 'decode with mostly seps' );
+
+    # test for alphabet with no seps
+    $alphabet = 'abdegjklmnop+-*/';
+    $hashids = Hashids->new( salt => $salt, alphabet => $alphabet );
+
+    $encoded = 'olb*do';
+    is( $hashids->encode(@plaintext), $encoded, 'encode with no seps' );
+    @result = $hashids->decode($encoded);
+    is_deeply( \@result, \@plaintext, 'decode with no seps' );
+};
+
+subtest 'v0.3.0 hashids.js API compatibility' => sub {
+    plan tests => 6;
+
+    my $hashids = Hashids->new( salt => $salt );
+
+    is( $hashids->encrypt(),               '', 'no encrypt' );
+    is( $hashids->encrypt('up the wazoo'), '', 'bad encrypt' );
+
+    my $plaintext = 123;
+    my $encrypted = 'YDx';
+    is( $hashids->encrypt($plaintext), $encrypted, 'encrypt 1' );
+    is( $hashids->decrypt($encrypted), $plaintext, 'decrypt 1' );
+
+    my @plaintexts = ( 1, 2, 3 );
+    $encrypted = 'laHquq';
+    is( $hashids->encrypt(@plaintexts), $encrypted, 'encrypt 2' );
+    my @result = $hashids->decrypt($encrypted);
+    is_deeply( \@result, \@plaintexts, 'decrypt 2' );
 };
