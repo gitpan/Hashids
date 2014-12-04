@@ -4,9 +4,9 @@
       "Zak B. Elep <zakame@cpan.org>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v2.1.1",
+   "generated_by" : "Minilla/v2.2.1",
    "license" : [
-      "unknown"
+      "mit"
    ],
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
@@ -57,7 +57,7 @@
    "provides" : {
       "Hashids" : {
          "file" : "lib/Hashids.pm",
-         "version" : "1.000000"
+         "version" : "1.000001"
       }
    },
    "release_status" : "stable",
@@ -71,8 +71,9 @@
          "web" : "https://github.com/zakame/hashids.pm"
       }
    },
-   "version" : "1.000000",
+   "version" : "1.000001",
    "x_contributors" : [
+      "C. A. Church <thisdroneeatspeople@gmail.com>",
       "Zak B. Elep <zakame@zakame.net>"
    ]
 }

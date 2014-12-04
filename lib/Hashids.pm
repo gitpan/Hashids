@@ -1,6 +1,6 @@
 package Hashids;
 
-our $VERSION = "1.000000";
+our $VERSION = "1.000001";
 
 use Carp;
 use Moo;
@@ -205,21 +205,20 @@ sub _decode {
     my @hash = grep { !/^$/ } split /$guard/ => $hash;
     my $i = ( @hash == 3 || @hash == 2 ) ? 1 : 0;
 
-    $hash = $hash[$i];
-    if ( my $lottery = substr $hash, 0, 1 ) {
-        $hash = substr $hash, 1;
+    return unless defined( $hash = $hash[$i] );
+    my $lottery = substr $hash, 0, 1;
+    $hash = substr $hash, 1;
 
-        my $sep = join '|', @{ $self->seps };
-        @hash = grep { !/^$/ } split /$sep/ => $hash;
+    my $sep = join '|', @{ $self->seps };
+    @hash = grep { !/^$/ } split /$sep/ => $hash;
 
-        my @alphabet = @{ $self->chars };
-        for my $part (@hash) {
-            my @s = ( $lottery, split( // => $self->salt ), @alphabet )
-                [ 0 .. @alphabet ];
+    my @alphabet = @{ $self->chars };
+    for my $part (@hash) {
+        my @s = ( $lottery, split( // => $self->salt ), @alphabet )
+            [ 0 .. @alphabet ];
 
-            @alphabet = $self->_consistentShuffle( \@alphabet, \@s );
-            push @$res => $self->_unhash( $part, \@alphabet );
-        }
+        @alphabet = $self->_consistentShuffle( \@alphabet, \@s );
+        push @$res => $self->_unhash( $part, \@alphabet );
     }
 
     return unless $self->Hashids::encode(@$res) eq $orig;
@@ -237,11 +236,9 @@ sub _consistentShuffle {
     return wantarray ? @alphabet : join '', @alphabet unless $salt;
     my @salt = ref $salt eq 'ARRAY' ? @$salt : split //, $salt;
 
-    my ( $int, $temp, $j );
     for ( my ( $i, $v, $p ) = ( $#alphabet, 0, 0 ); $i > 0; $i--, $v++ ) {
-        $v %= @salt;
-        $p += $int = ord $salt[$v];
-        $j = ( $int + $v + $p ) % $i;
+        $p += my $int = ord $salt[ $v %= @salt ];
+        my $j = ( $int + $v + $p ) % $i;
 
         @alphabet[ $j, $i ] = @alphabet[ $i, $j ];
     }
@@ -361,10 +358,10 @@ You can also construct with just a single argument for the salt:
 Encode a single number (or a list of numbers) into a hash
 string.
 
-C<encrypt> is an alias for this method, for compatibility with v0.3.x
+I<encrypt()> is an alias for this method, for compatibility with v0.3.x
 hashids.js API.
 
-=item my $hash = $hashids->encode_hex('deadbeef');
+=item  my $hash = $hashids->encode_hex('deadbeef');
 
 Encode a hex string into a hash string.
 
@@ -372,8 +369,8 @@ Encode a hex string into a hash string.
 
 Decode a hash string into its number (or numbers.)  Returns either a
 simple scalar if it is a single number, an arrayref of numbers if it
-decrypted a set, or C<undef> if given bad input.  Use L<ref> on the
-result to ensure proper usage.
+decrypted a set, or C<undef> if given bad input.  Use L<perlfunc/ref> on
+the result to ensure proper usage.
 
 You can also retrieve the result as a proper list by assigning it to an
 array variable, by doing so you will always get a list of one or more
@@ -382,13 +379,13 @@ found:
 
     my @numbers = $hashids->decode($hash);
 
-C<decrypt> is an alias for this method, for compatibility with v0.3.x
+I<decrypt()> is an alias for this method, for compatibility with v0.3.x
 hashids.js API.
 
-=item my $hex_string = $hashids->decode_hex($hash);
+=item  my $hex_string = $hashids->decode_hex($hash);
 
-Opposite of L<encode_hex>.  Unlike L<decode>, this will always return a
-string, including the empty string if the hash is invalid.
+Opposite of I<encode_hex()>.  Unlike I<decode()>, this will always
+return a string, including the empty string if the hash is invalid.
 
 =back
 
